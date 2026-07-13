@@ -1,0 +1,24 @@
+[workspace]
+members = ["crates/notakase-core", "crates/notakase-tui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+dirs = "5"
+
+# Small, fast release binaries. panic=abort is fine for the TUI: our panic
+# hook (main.rs) restores the terminal before the process aborts.
+[profile.release]
+opt-level = "s"
+codegen-units = 1
+lto = true
+strip = true
+panic = "abort"

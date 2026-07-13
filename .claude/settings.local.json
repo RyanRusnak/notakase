@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/ryanrusnak/.config/omarchy/**)",
+      "Read(//home/ryanrusnak/.config/omarchy/current/**)",
+      "Read(//home/ryanrusnak/Code/**)",
+      "Read(//home/ryanrusnak/Code/todarchy-linux/**)",
+      "Bash(cargo --version)",
+      "Bash(rustc --version)",
+      "Read(//home/ryanrusnak/.cargo/registry/cache/**)",
+      "Bash(fc-list)",
+      "Bash(cargo build *)",
+      "Bash(NOTAKASE_ASCII=1 cargo test render_snapshot -- --nocapture)",
+      "Bash(NOTAKASE_ASCII=1 cargo test)",
+      "Read(//home/ryanrusnak/.config/hypr/**)",
+      "Bash(ln -sf /home/ryanrusnak/Code/notakase/target/release/notakase /home/ryanrusnak/.local/bin/notakase)",
+      "Bash(hyprctl reload *)",
+      "Bash(hyprctl configerrors *)",
+      "Bash(echo \"--- exit: $? ---\")",
+      "Bash(command -v notakase notakase-toggle)",
+      "Bash(sed -i 's/TDAR/NKSE/g; s/todarchy encrypted envelope/notakase encrypted envelope/g' cryptobox.rs)",
+      "Bash(sed -i 's#com\\\\.todarchy\\\\.app\\\\.shared-keys#com.notakase.app.keys#g' keystore.rs)",
+      "Bash(sed -i 's/todarchy/notakase/g' sharelink.rs)",
+      "Bash(sed -i 's#todarchy-linux/0.2#notakase/0.1#g; s/todarchy/notakase/g' server_client.rs)",
+      "Bash(rm -rf ~/.local/share/notakase)",
+      "Bash(./target/release/notakase)",
+      "Read(//home/ryanrusnak/.local/share/notakase/**)",
+      "Bash(cargo test *)",
+      "Bash(hyprctl clients *)",
+      "Bash(tmux -V)",
+      "Bash(chmod +x ~/.local/bin/notakase-restart)",
+      "Bash(NOTAKASE_ASCII=1 cargo test -p notakase-tui)"
+    ]
+  }
+}
