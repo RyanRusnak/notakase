@@ -149,12 +149,29 @@ impl Vault {
         // had materialized it before (it is in the ledger). Otherwise it is a
         // note that just arrived via sync and still needs materializing — leave
         // it live.
-        for note in &mut self.notes {
-            let path = note.doc.path();
-            if !note.doc.deleted() && !disk.contains_key(&path) && prev_materialized.contains(&path)
-            {
-                note.doc.set_deleted(true, now)?;
+        //
+        // GUARD: if the vault dir is *entirely* empty, treat that as
+        // "unmaterialized" (e.g. wrong/misconfigured vault dir, a fresh clone,
+        // or a crash mid-write) rather than "the user deleted every note", and
+        // skip deletion detection. A real mass-delete still goes one file at a
+        // time; a whole empty tree is a signal something is off, not intent.
+        if !disk.is_empty() {
+            for note in &mut self.notes {
+                let path = note.doc.path();
+                if !note.doc.deleted()
+                    && !disk.contains_key(&path)
+                    && prev_materialized.contains(&path)
+                {
+                    note.doc.set_deleted(true, now)?;
+                }
             }
+        } else if self.notes.iter().any(|n| !n.doc.deleted()) {
+            tracing::warn!(
+                "vault dir {} is empty but {} live notes exist — skipping deletion \
+                 detection (materializing instead)",
+                self.vault_dir.display(),
+                self.notes.iter().filter(|n| !n.doc.deleted()).count()
+            );
         }
         Ok(())
     }
