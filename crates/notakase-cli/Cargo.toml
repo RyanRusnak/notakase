@@ -1,0 +1,17 @@
+[package]
+name = "notakase-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "CLI companion to the notakase note vault"
+
+[[bin]]
+name = "nota"
+path = "src/main.rs"
+
+[dependencies]
+notakase-core = { path = "../notakase-core" }
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

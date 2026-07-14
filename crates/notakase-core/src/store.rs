@@ -61,6 +61,32 @@ impl Vault {
         Ok(vault)
     }
 
+    /// Open for headless / programmatic use (CLI, MCP). Loads the canonical
+    /// documents and materializes them to the vault dir, but — unlike `open` —
+    /// does NOT ingest from disk or infer deletions from missing files. A tool
+    /// running when the vault dir happens to be empty or stale must never
+    /// tombstone notes; only the interactive TUI (which owns the on-disk files)
+    /// uses `open`.
+    pub fn open_headless(vault_dir: impl AsRef<Path>, data_dir: impl AsRef<Path>) -> Result<Vault> {
+        let vault_dir = vault_dir.as_ref().to_path_buf();
+        let data_dir = data_dir.as_ref().to_path_buf();
+        fs::create_dir_all(&vault_dir)
+            .with_context(|| format!("creating vault dir {}", vault_dir.display()))?;
+        fs::create_dir_all(notes_dir(&data_dir))
+            .with_context(|| format!("creating data dir {}", data_dir.display()))?;
+        let mut vault = Vault {
+            vault_dir,
+            data_dir,
+            notes: Vec::new(),
+        };
+        vault.load_docs()?;
+        // Keep the vault dir + ledger in step with the canonical docs so a
+        // later run (or the TUI) never sees an empty dir against a stale ledger.
+        vault.materialize()?;
+        vault.save_ledger()?;
+        Ok(vault)
+    }
+
     /// Notes that currently exist (tombstones filtered out), sorted by path.
     pub fn live_notes(&self) -> Vec<&Note> {
         let mut v: Vec<&Note> = self.notes.iter().filter(|n| !n.doc.deleted()).collect();

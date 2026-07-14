@@ -1,0 +1,19 @@
+[package]
+name = "notakase-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "MCP (Model Context Protocol) server exposing the notakase note vault"
+
+[[bin]]
+name = "notakase-mcp"
+path = "src/main.rs"
+
+[dependencies]
+notakase-core = { path = "../notakase-core" }
+serde_json.workspace = true
+anyhow.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

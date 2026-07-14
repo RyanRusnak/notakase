@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/notakase-core", "crates/notakase-tui"]
+members = ["crates/notakase-core", "crates/notakase-tui", "crates/notakase-cli", "crates/notakase-mcp"]
 resolver = "2"
 
 [workspace.package]
