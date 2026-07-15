@@ -307,6 +307,8 @@ fn run(
                 KeyCode::Char('p') if ctrl => open_picker(app, backend, PickerMode::Files),
                 KeyCode::Char('/') => open_picker(app, backend, PickerMode::Search),
                 KeyCode::Char(':') => app.open_command_palette(),
+                // complete a task from this note's todokase embed
+                KeyCode::Char('x') => open_task_picker(app),
 
                 KeyCode::Char('J') => app.scroll_preview(1),
                 KeyCode::Char('K') => app.scroll_preview(-1),
@@ -384,16 +386,70 @@ fn open_picker(app: &mut App, backend: &Option<Backend>, mode: PickerMode) {
     app.open_picker(mode, entries);
 }
 
+/// Open a picker of the open tasks referenced by the current note's todokase
+/// embed(s), so one can be completed.
+fn open_task_picker(app: &mut App) {
+    let Some(path) = app.selected_file() else {
+        app.notice = Some("select a note with a task list first".into());
+        return;
+    };
+    let md = std::fs::read_to_string(&path).unwrap_or_default();
+    match notakase_core::todokase::tasks_in_note(&md) {
+        Ok(tasks) => {
+            let entries: Vec<PickEntry> = tasks
+                .into_iter()
+                .filter(|t| !t.done)
+                .map(|t| {
+                    let mut hint = t.ctx.clone().unwrap_or_default();
+                    if let Some(d) = &t.due {
+                        if !hint.is_empty() {
+                            hint.push_str("  ");
+                        }
+                        hint.push_str(&format!("due {d}"));
+                    }
+                    PickEntry::task(t.title, hint, t.id)
+                })
+                .collect();
+            if entries.is_empty() {
+                app.notice = Some("no open tasks in this note's embed".into());
+            } else {
+                app.open_picker(PickerMode::Tasks, entries);
+            }
+        }
+        Err(_) => app.notice = Some("todokase task list unavailable".into()),
+    }
+}
+
+/// Complete a todokase task by shelling out to `tod done <id>`, then refresh the
+/// preview so the embedded checkbox flips.
+fn complete_task(app: &mut App, id: &str) {
+    let ok = std::process::Command::new("tod")
+        .arg("done")
+        .arg(id)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok {
+        app.notice = Some("task completed ✓".into());
+        app.rerender_preview();
+    } else {
+        app.notice = Some("couldn't complete — is `tod` installed?".into());
+    }
+}
+
 /// Route a keystroke into the open find/search/command overlay.
 fn handle_picker_key(app: &mut App, backend: &mut Option<Backend>, key: crossterm::event::KeyEvent) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
         KeyCode::Esc => app.close_picker(),
         KeyCode::Enter => {
-            // a command runs its action; a note jumps to it in the tree
+            // a command runs its action; a task completes; a note jumps in the tree
             if let Some(cmd) = app.picker_selected_command() {
                 app.close_picker();
                 dispatch_command(app, backend, cmd);
+            } else if let Some(id) = app.picker_selected_task_id() {
+                app.close_picker();
+                complete_task(app, &id);
             } else if let Some(rel) = app.picker_selected_rel() {
                 app.close_picker();
                 app.show_tree = true;

@@ -38,6 +38,7 @@ cargo run -- ~/Documents/notes # point it at your own notes
 | `Ctrl-p`        | Fuzzy-find a note by path                |
 | `/`             | Full-text search across note bodies      |
 | `:`             | Command palette (e.g. Sync now)          |
+| `x`             | Complete a task from this note's embed   |
 | `J` / `K`       | Scroll the preview                       |
 | `Ctrl-f` / `-b` | Page-scroll the preview                  |
 | `Tab`           | Zen mode (hide the tree)                 |
@@ -162,7 +163,12 @@ Keys: `project` (name or id), `context` (`@work`), `status` (`open`/`done`/`all`
 default open), `limit`. The block stores only the *query* — notakase reads the
 task app's `tasks.json` and renders the matching tasks fresh each time you open
 the note. Other markdown viewers just show it as a code block, so notes stay
-portable. Read-only for now (checking tasks off from a note is a future step).
+portable.
+
+Press `x` on a note that has an embed to **complete one of its tasks**: a picker
+lists the note's open tasks; choosing one marks it done in todokase (via its
+`tod` CLI) and the checkbox flips. This needs the task app's `tod` CLI on your
+`PATH` — build it from the todokase repo and symlink it into `~/.local/bin`.
 
 ## Roadmap
 
@@ -176,8 +182,9 @@ portable. Read-only for now (checking tasks off from a note is a future step).
   note bodies, in a single overlay picker that jumps to the chosen note.
 - **Command palette (done)** — `:` opens a palette (first command: Sync now);
   the status bar shows the last-sync time.
-- **Task embeds (done)** — a `todokase` fenced block renders a live, read-only
-  task list from the sibling task app.
+- **Task embeds (done)** — a `todokase` fenced block renders a live task list
+  from the sibling task app; `x` completes one of the note's tasks (write-back
+  via the `tod` CLI).
 - **M3 (done)** — self-hosted relay sync (`/doc/:id` + ETag polling), a manifest
   CRDT listing note ids for discovery, and `notakase share`/`import` to move the
   vault key between devices.

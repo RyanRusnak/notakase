@@ -39,6 +39,7 @@ pub enum PickerMode {
     Files,
     Search,
     Commands,
+    Tasks,
 }
 
 /// A runnable command in the palette. Dispatched by main on Enter.
@@ -48,16 +49,22 @@ pub enum CommandId {
 }
 
 /// One picker row. For notes: a vault-relative path + body. For commands: the
-/// title lives in `rel`, the hint in `body`, and `command` names the action.
+/// title in `rel`, hint in `body`, `command` names the action. For tasks: the
+/// title in `rel`, hint in `body`, `task_id` names the todokase task.
 pub struct PickEntry {
     pub rel: String,
     pub body: String,
     pub command: Option<CommandId>,
+    pub task_id: Option<String>,
 }
 
 impl PickEntry {
     pub fn note(rel: String, body: String) -> PickEntry {
-        PickEntry { rel, body, command: None }
+        PickEntry { rel, body, command: None, task_id: None }
+    }
+
+    pub fn task(title: String, hint: String, id: String) -> PickEntry {
+        PickEntry { rel: title, body: hint, command: None, task_id: Some(id) }
     }
 }
 
@@ -81,6 +88,7 @@ impl Picker {
             PickerMode::Files => "open",
             PickerMode::Search => "search",
             PickerMode::Commands => "commands",
+            PickerMode::Tasks => "complete task",
         }
     }
 
@@ -88,8 +96,8 @@ impl Picker {
     pub fn recompute(&mut self) {
         self.results.clear();
         match self.mode {
-            // fuzzy match on the display text (path for notes, title for commands)
-            PickerMode::Files | PickerMode::Commands => {
+            // fuzzy match on the display text (path for notes, title otherwise)
+            PickerMode::Files | PickerMode::Commands | PickerMode::Tasks => {
                 let mut scored: Vec<(i64, usize)> = self
                     .entries
                     .iter()
@@ -556,6 +564,7 @@ impl App {
             rel: "Sync now".to_string(),
             body: "push local edits and pull remote changes".to_string(),
             command: Some(CommandId::SyncNow),
+            task_id: None,
         }];
         self.open_picker(PickerMode::Commands, entries);
     }
@@ -602,6 +611,20 @@ impl App {
         let p = self.picker.as_ref()?;
         let r = p.results.get(p.sel)?;
         p.entries[r.idx].command
+    }
+
+    /// The todokase task id under the cursor, if the task picker is open.
+    pub fn picker_selected_task_id(&self) -> Option<String> {
+        let p = self.picker.as_ref()?;
+        let r = p.results.get(p.sel)?;
+        p.entries[r.idx].task_id.clone()
+    }
+
+    /// Force the preview to rebuild (e.g. after completing a task changes the
+    /// embed's data).
+    pub fn rerender_preview(&mut self) {
+        self.preview_for = None;
+        self.refresh_preview();
     }
 }
 

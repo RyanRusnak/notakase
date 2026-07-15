@@ -76,6 +76,7 @@ fn render_picker(frame: &mut Frame, app: &App, area: Rect) {
     let icon = match p.mode {
         PickerMode::Search => g.search,
         PickerMode::Commands => g.command,
+        PickerMode::Tasks => g.task_open,
         PickerMode::Files => g.folder_open,
     };
     let block = Block::default()
@@ -140,15 +141,21 @@ fn render_picker(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default()
             };
             let is_cmd = entry.command.is_some();
-            let icon = if is_cmd { g.command } else { g.note };
-            let icon_color = if is_cmd { ac } else { DIM };
+            let is_task = entry.task_id.is_some();
+            let (icon, icon_color) = if is_cmd {
+                (g.command, ac)
+            } else if is_task {
+                (g.task_open, DIM)
+            } else {
+                (g.note, DIM)
+            };
             let mut spans = vec![
                 bar,
                 Span::styled(format!("{icon} "), Style::default().fg(icon_color)),
                 Span::styled(entry.rel.clone(), name_style),
             ];
-            // command hint (from body) or search snippet
-            if is_cmd && !entry.body.is_empty() {
+            // command/task hint (from body) or search snippet
+            if (is_cmd || is_task) && !entry.body.is_empty() {
                 spans.push(Span::styled(format!("   {}", entry.body), Style::default().fg(DIM)));
             } else if let Some(snip) = &r.snippet {
                 spans.push(Span::styled(format!("   {snip}"), Style::default().fg(DIM)));
@@ -358,7 +365,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let hint = if app.show_tree {
-        " j/k · a new · e edit · ^p find · / search · : cmds · q quit"
+        " j/k · a new · e edit · x done · ^p find · / search · : cmds · q quit"
     } else {
         " J/K scroll · ^p find · / search · : cmds · Tab tree · q quit"
     };

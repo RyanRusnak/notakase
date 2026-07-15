@@ -50,6 +50,7 @@ impl Default for Query {
 /// One task ready to render.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskItem {
+    pub id: String,
     pub title: String,
     pub done: bool,
     pub ctx: Option<String>,
@@ -94,13 +95,63 @@ pub fn tasks_json_path() -> PathBuf {
     data.join("todarchy/tasks.json")
 }
 
-/// Run a query against the live task list.
-pub fn query(q: &Query) -> Result<Vec<TaskItem>> {
+/// Load and parse the task app's tasks.json.
+pub fn load_doc() -> Result<Value> {
     let path = tasks_json_path();
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("reading {}", path.display()))?;
-    let doc: Value = serde_json::from_str(&text).context("parsing tasks.json")?;
-    Ok(filter(&doc, q))
+    serde_json::from_str(&text).context("parsing tasks.json")
+}
+
+/// Run a query against the live task list.
+pub fn query(q: &Query) -> Result<Vec<TaskItem>> {
+    Ok(filter(&load_doc()?, q))
+}
+
+/// Every task referenced by the `todokase` embed blocks in a note (deduped by
+/// id), reading the task list once. Empty if the note has no embeds.
+pub fn tasks_in_note(md: &str) -> Result<Vec<TaskItem>> {
+    let blocks = todokase_blocks(md);
+    if blocks.is_empty() {
+        return Ok(Vec::new());
+    }
+    let doc = load_doc()?;
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for body in blocks {
+        for t in filter(&doc, &parse_query(&body)) {
+            if seen.insert(t.id.clone()) {
+                out.push(t);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Extract the bodies of fenced ```todokase blocks from markdown.
+fn todokase_blocks(md: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut in_block = false;
+    let mut buf = String::new();
+    for line in md.lines() {
+        let t = line.trim_start();
+        if !in_block {
+            let fence = t.strip_prefix("```").or_else(|| t.strip_prefix("~~~"));
+            if let Some(info) = fence {
+                if info.trim().eq_ignore_ascii_case("todokase") {
+                    in_block = true;
+                    buf.clear();
+                }
+            }
+        } else if t.starts_with("```") || t.starts_with("~~~") {
+            in_block = false;
+            blocks.push(std::mem::take(&mut buf));
+        } else {
+            buf.push_str(line);
+            buf.push('\n');
+        }
+    }
+    blocks
 }
 
 /// Pure filter over a parsed tasks.json document (split out for testing).
@@ -159,11 +210,12 @@ pub fn filter(doc: &Value, q: &Query) -> Vec<TaskItem> {
                 _ => {}
             }
 
+            let id = t.get("id").and_then(Value::as_str).unwrap_or("").to_string();
             let pos = t
                 .get("pos")
                 .and_then(|v| v.as_str().and_then(|s| s.parse().ok()).or_else(|| v.as_f64()))
                 .unwrap_or(0.0);
-            out.push((pos, TaskItem { title, done, ctx, due, project }));
+            out.push((pos, TaskItem { id, title, done, ctx, due, project }));
         }
     }
 
@@ -191,9 +243,9 @@ mod tests {
                 {"id": "p_home", "name": "Home"}
             ],
             "tasks": [
-                {"title": "ship v1", "list": "p_work", "ctx": "@work", "due": "today", "pos": "2", "doneAt": "123"},
-                {"title": "write spec", "list": "p_work", "ctx": "", "due": "", "pos": "1"},
-                {"title": "buy milk", "list": "p_home", "ctx": "@errands", "due": "", "pos": "3"}
+                {"id": "t1", "title": "ship v1", "list": "p_work", "ctx": "@work", "due": "today", "pos": "2", "doneAt": "123"},
+                {"id": "t2", "title": "write spec", "list": "p_work", "ctx": "", "due": "", "pos": "1"},
+                {"id": "t3", "title": "buy milk", "list": "p_home", "ctx": "@errands", "due": "", "pos": "3"}
             ]
         })
     }
@@ -238,5 +290,16 @@ mod tests {
         let tasks = filter(&doc(), &q);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].title, "buy milk");
+        assert_eq!(tasks[0].id, "t3");
+    }
+
+    #[test]
+    fn extracts_todokase_blocks_from_markdown() {
+        let md = "# Note\n\ntext\n\n```todokase\nproject: Work\n```\n\nmore\n\n\
+                  ```rust\nfn main() {}\n```\n\n~~~todokase\ncontext: @home\n~~~\n";
+        let blocks = todokase_blocks(md);
+        assert_eq!(blocks.len(), 2, "should find both todokase fences, not the rust one");
+        assert!(blocks[0].contains("project: Work"));
+        assert!(blocks[1].contains("context: @home"));
     }
 }
