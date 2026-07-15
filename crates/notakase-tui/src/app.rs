@@ -33,17 +33,32 @@ pub struct Prompt {
     pub err: Option<String>,
 }
 
-/// The overlay picker: fuzzy file-open, or full-text search.
+/// The overlay picker: fuzzy file-open, full-text search, or the command palette.
 #[derive(PartialEq, Clone, Copy)]
 pub enum PickerMode {
     Files,
     Search,
+    Commands,
 }
 
-/// One searchable note: its vault-relative path and its body.
+/// A runnable command in the palette. Dispatched by main on Enter.
+#[derive(PartialEq, Clone, Copy)]
+pub enum CommandId {
+    SyncNow,
+}
+
+/// One picker row. For notes: a vault-relative path + body. For commands: the
+/// title lives in `rel`, the hint in `body`, and `command` names the action.
 pub struct PickEntry {
     pub rel: String,
     pub body: String,
+    pub command: Option<CommandId>,
+}
+
+impl PickEntry {
+    pub fn note(rel: String, body: String) -> PickEntry {
+        PickEntry { rel, body, command: None }
+    }
 }
 
 /// A filtered result: an index into `entries` plus an optional match snippet.
@@ -65,6 +80,7 @@ impl Picker {
         match self.mode {
             PickerMode::Files => "open",
             PickerMode::Search => "search",
+            PickerMode::Commands => "commands",
         }
     }
 
@@ -72,7 +88,8 @@ impl Picker {
     pub fn recompute(&mut self) {
         self.results.clear();
         match self.mode {
-            PickerMode::Files => {
+            // fuzzy match on the display text (path for notes, title for commands)
+            PickerMode::Files | PickerMode::Commands => {
                 let mut scored: Vec<(i64, usize)> = self
                     .entries
                     .iter()
@@ -169,6 +186,8 @@ pub struct App {
     pub server: Option<String>,
     pub encrypted: bool,
     pub sync_msg: Option<String>,
+    /// Wall-clock time of the last successful sync, preformatted (e.g. "15:42").
+    pub last_sync_at: Option<String>,
 
     // In-app editing (M4): an active prompt and a transient notice line.
     pub prompt: Option<Prompt>,
@@ -202,6 +221,7 @@ impl App {
             server: None,
             encrypted: false,
             sync_msg: None,
+            last_sync_at: None,
             prompt: None,
             notice: None,
             picker: None,
@@ -521,12 +541,23 @@ impl App {
         self.refresh_preview();
     }
 
-    // ---- fuzzy-find / search overlay ----
+    // ---- fuzzy-find / search / command overlay ----
 
     pub fn open_picker(&mut self, mode: PickerMode, entries: Vec<PickEntry>) {
         let mut p = Picker { mode, query: String::new(), entries, results: Vec::new(), sel: 0 };
         p.recompute();
         self.picker = Some(p);
+    }
+
+    /// Open the command palette. The command set lives here so it's easy to
+    /// grow; each entry carries the action to dispatch on Enter.
+    pub fn open_command_palette(&mut self) {
+        let entries = vec![PickEntry {
+            rel: "Sync now".to_string(),
+            body: "push local edits and pull remote changes".to_string(),
+            command: Some(CommandId::SyncNow),
+        }];
+        self.open_picker(PickerMode::Commands, entries);
     }
 
     pub fn close_picker(&mut self) {
@@ -565,6 +596,13 @@ impl App {
         let r = p.results.get(p.sel)?;
         Some(p.entries[r.idx].rel.clone())
     }
+
+    /// The command under the cursor, if the palette is open.
+    pub fn picker_selected_command(&self) -> Option<CommandId> {
+        let p = self.picker.as_ref()?;
+        let r = p.results.get(p.sel)?;
+        p.entries[r.idx].command
+    }
 }
 
 #[cfg(test)]
@@ -577,7 +615,7 @@ mod picker_tests {
             query: query.to_string(),
             entries: entries
                 .into_iter()
-                .map(|(rel, body)| PickEntry { rel: rel.into(), body: body.into() })
+                .map(|(rel, body)| PickEntry::note(rel.into(), body.into()))
                 .collect(),
             results: Vec::new(),
             sel: 0,

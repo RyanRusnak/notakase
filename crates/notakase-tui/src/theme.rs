@@ -31,6 +31,7 @@ pub struct Glyphs {
     pub lock: &'static str,
     pub server: &'static str,
     pub search: &'static str,
+    pub command: &'static str,
 }
 
 // Nerd Font (Private Use Area) glyphs.
@@ -48,6 +49,7 @@ const NERD: Glyphs = Glyphs {
     lock: "\u{f023}",      // lock
     server: "\u{f0ac}",    // globe
     search: "\u{f002}",    // magnifier
+    command: "\u{f120}",   // terminal
 };
 
 // Plain-Unicode fallback — safe in any font.
@@ -65,6 +67,7 @@ const ASCII: Glyphs = Glyphs {
     lock: "#",
     server: "@",
     search: "/",
+    command: ":",
 };
 
 pub fn ascii() -> bool {

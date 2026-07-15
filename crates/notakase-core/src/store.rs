@@ -609,15 +609,37 @@ mod tests {
 
     #[test]
     fn removed_file_becomes_tombstone() {
+        // Keep a second note so the vault dir isn't *entirely* empty after the
+        // deletion — the empty-dir guard deliberately skips deletion detection
+        // when the whole tree vanishes (see ingest_from_disk).
         let tmp = tempfile::tempdir().unwrap();
         let vault = tmp.path().join("vault");
         let data = tmp.path().join("data");
         write(&vault, "gone.md", "bye");
+        write(&vault, "keep.md", "stay");
         Vault::open(&vault, &data).unwrap();
 
         fs::remove_file(vault.join("gone.md")).unwrap();
         let v = Vault::open(&vault, &data).unwrap();
-        assert_eq!(v.live_notes().len(), 0);
+        assert_eq!(v.live_notes().len(), 1);
         assert!(v.note_by_path("gone.md").unwrap().doc.deleted());
+        assert!(v.note_by_path("keep.md").is_some());
+    }
+
+    #[test]
+    fn emptying_the_whole_vault_dir_does_not_tombstone() {
+        // The guard: an entirely empty vault dir (wrong dir / fresh clone /
+        // crash) must not be read as "the user deleted everything".
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path().join("vault");
+        let data = tmp.path().join("data");
+        write(&vault, "a.md", "one");
+        write(&vault, "b.md", "two");
+        Vault::open(&vault, &data).unwrap();
+
+        fs::remove_file(vault.join("a.md")).unwrap();
+        fs::remove_file(vault.join("b.md")).unwrap();
+        let v = Vault::open(&vault, &data).unwrap();
+        assert_eq!(v.live_notes().len(), 2, "empty dir must not mass-delete");
     }
 }

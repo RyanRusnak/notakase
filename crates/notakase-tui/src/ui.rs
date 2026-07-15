@@ -61,16 +61,23 @@ fn render_picker(frame: &mut Frame, app: &App, area: Rect) {
     let g = glyphs();
     let ac = accent();
 
-    let width = area.width.min(84).max(40);
-    let height = area.height.min(20).max(6);
+    // Center-ish, but always clamped inside the frame so a short terminal can't
+    // push the box past the bottom edge (which panics ratatui's buffer).
+    let width = area.width.min(84);
+    let y = (area.height / 8).min(area.height.saturating_sub(4));
+    let height = 20.min(area.height.saturating_sub(y)).max(1);
     let rect = Rect {
         x: (area.width.saturating_sub(width)) / 2,
-        y: area.height / 8,
+        y,
         width,
         height,
     };
     frame.render_widget(Clear, rect);
-    let icon = if p.mode == PickerMode::Search { g.search } else { g.folder_open };
+    let icon = match p.mode {
+        PickerMode::Search => g.search,
+        PickerMode::Commands => g.command,
+        PickerMode::Files => g.folder_open,
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -132,12 +139,18 @@ fn render_picker(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default()
             };
+            let is_cmd = entry.command.is_some();
+            let icon = if is_cmd { g.command } else { g.note };
+            let icon_color = if is_cmd { ac } else { DIM };
             let mut spans = vec![
                 bar,
-                Span::styled(format!("{} ", g.note), Style::default().fg(DIM)),
+                Span::styled(format!("{icon} "), Style::default().fg(icon_color)),
                 Span::styled(entry.rel.clone(), name_style),
             ];
-            if let Some(snip) = &r.snippet {
+            // command hint (from body) or search snippet
+            if is_cmd && !entry.body.is_empty() {
+                spans.push(Span::styled(format!("   {}", entry.body), Style::default().fg(DIM)));
+            } else if let Some(snip) = &r.snippet {
                 spans.push(Span::styled(format!("   {snip}"), Style::default().fg(DIM)));
             }
             ListItem::new(Line::from(spans))
@@ -345,9 +358,9 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let hint = if app.show_tree {
-        " j/k move · a new · e edit · ^p find · / search · d delete · q quit"
+        " j/k · a new · e edit · ^p find · / search · : cmds · q quit"
     } else {
-        " J/K scroll · ^p find · / search · Tab tree · q quit"
+        " J/K scroll · ^p find · / search · : cmds · Tab tree · q quit"
     };
     // A transient notice (e.g. "created X") replaces the hint until next key.
     let left = match &app.notice {
@@ -373,9 +386,14 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         if app.encrypted {
             right.push(Span::styled(format!("  {}", g.lock), Style::default().fg(Color::Green)));
         }
-        if let Some(msg) = &app.sync_msg {
-            right.push(Span::styled(format!("  {msg}"), Style::default().fg(DIM)));
-        }
+        // last-sync time (+ the latest push/pull summary)
+        let status = match (&app.last_sync_at, &app.sync_msg) {
+            (Some(t), Some(m)) => format!("  synced {t} · {m}"),
+            (Some(t), None) => format!("  synced {t}"),
+            (None, Some(m)) => format!("  {m}"),
+            (None, None) => "  not synced yet".to_string(),
+        };
+        right.push(Span::styled(status, Style::default().fg(DIM)));
         right.push(Span::styled("   ", Style::default()));
     } else {
         right.push(Span::styled("local only   ", Style::default().fg(DIM)));

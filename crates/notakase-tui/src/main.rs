@@ -170,7 +170,9 @@ fn main() -> Result<()> {
         .and_then(|f| f.file_name().map(|s| s.to_string_lossy().into_owned()));
     app.server = server_configured.then(|| short_host(&server_url));
     app.encrypted = encrypted;
-    app.sync_msg = initial.as_ref().map(sync_label);
+    if let Some(rep) = &initial {
+        record_sync(&mut app, rep);
+    }
 
     let mut terminal = setup_terminal()?;
     install_panic_hook();
@@ -222,9 +224,9 @@ fn vault_dir(cfg: &Config) -> PathBuf {
 
 fn sync_label(r: &SyncReport) -> String {
     if r.pulled == 0 && r.pushed == 0 {
-        "synced".to_string()
+        "up to date".to_string()
     } else {
-        format!("synced · {}↓ {}↑", r.pulled, r.pushed)
+        format!("{}↓ {}↑", r.pulled, r.pushed)
     }
 }
 
@@ -248,7 +250,7 @@ fn run(
                 if rep.changed {
                     app.reload();
                 }
-                app.sync_msg = Some(sync_label(&rep));
+                record_sync(app, &rep);
             }
         }
 
@@ -267,9 +269,9 @@ fn run(
                 handle_prompt_key(app, backend, key.code);
                 continue;
             }
-            // The find/search overlay likewise captures input.
+            // The find/search/command overlay likewise captures input.
             if app.picker.is_some() {
-                handle_picker_key(app, key);
+                handle_picker_key(app, backend, key);
                 continue;
             }
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -301,9 +303,10 @@ fn run(
                 KeyCode::Char('r') => app.begin_rename(),
                 KeyCode::Char('d') => app.begin_delete(),
 
-                // fuzzy open (Ctrl-p) / full-text search (/)
+                // fuzzy open (Ctrl-p) / full-text search (/) / command palette (:)
                 KeyCode::Char('p') if ctrl => open_picker(app, backend, PickerMode::Files),
                 KeyCode::Char('/') => open_picker(app, backend, PickerMode::Search),
+                KeyCode::Char(':') => app.open_command_palette(),
 
                 KeyCode::Char('J') => app.scroll_preview(1),
                 KeyCode::Char('K') => app.scroll_preview(-1),
@@ -357,7 +360,7 @@ fn collect_entries(app: &App, backend: &Option<Backend>) -> Vec<PickEntry> {
             .vault
             .live_notes()
             .into_iter()
-            .map(|n| PickEntry { rel: n.doc.path(), body: n.doc.body() })
+            .map(|n| PickEntry::note(n.doc.path(), n.doc.body()))
             .collect();
     }
     app.tree
@@ -371,7 +374,7 @@ fn collect_entries(app: &App, backend: &Option<Backend>) -> Vec<PickEntry> {
                 .unwrap_or(&n.path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            PickEntry { rel, body: std::fs::read_to_string(&n.path).unwrap_or_default() }
+            PickEntry::note(rel, std::fs::read_to_string(&n.path).unwrap_or_default())
         })
         .collect()
 }
@@ -381,13 +384,17 @@ fn open_picker(app: &mut App, backend: &Option<Backend>, mode: PickerMode) {
     app.open_picker(mode, entries);
 }
 
-/// Route a keystroke into the open find/search overlay.
-fn handle_picker_key(app: &mut App, key: crossterm::event::KeyEvent) {
+/// Route a keystroke into the open find/search/command overlay.
+fn handle_picker_key(app: &mut App, backend: &mut Option<Backend>, key: crossterm::event::KeyEvent) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
         KeyCode::Esc => app.close_picker(),
         KeyCode::Enter => {
-            if let Some(rel) = app.picker_selected_rel() {
+            // a command runs its action; a note jumps to it in the tree
+            if let Some(cmd) = app.picker_selected_command() {
+                app.close_picker();
+                dispatch_command(app, backend, cmd);
+            } else if let Some(rel) = app.picker_selected_rel() {
                 app.close_picker();
                 app.show_tree = true;
                 app.select_path(&rel);
@@ -402,6 +409,38 @@ fn handle_picker_key(app: &mut App, key: crossterm::event::KeyEvent) {
         KeyCode::Char('n') if ctrl => app.picker_move(1),
         KeyCode::Char(c) if !ctrl => app.picker_input(c),
         _ => {}
+    }
+}
+
+/// Run a command-palette action.
+fn dispatch_command(app: &mut App, backend: &mut Option<Backend>, cmd: crate::app::CommandId) {
+    match cmd {
+        crate::app::CommandId::SyncNow => {
+            if app.sync_folder.is_none() && app.server.is_none() {
+                app.notice = Some("sync not configured (local only)".into());
+                return;
+            }
+            match backend.as_mut() {
+                Some(b) => {
+                    let rep = b.sync();
+                    if rep.changed {
+                        app.reload();
+                    }
+                    record_sync(app, &rep);
+                    app.notice = Some(format!("synced · {}↓ {}↑", rep.pulled, rep.pushed));
+                }
+                None => app.notice = Some("backend unavailable".into()),
+            }
+        }
+    }
+}
+
+/// Record a completed sync: refresh the last-sync time (only when a transport
+/// is actually configured) and the short result summary.
+fn record_sync(app: &mut App, rep: &SyncReport) {
+    if app.sync_folder.is_some() || app.server.is_some() {
+        app.sync_msg = Some(sync_label(rep));
+        app.last_sync_at = Some(chrono::Local::now().format("%H:%M").to_string());
     }
 }
 

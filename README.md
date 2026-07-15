@@ -37,6 +37,7 @@ cargo run -- ~/Documents/notes # point it at your own notes
 | `d`             | Delete selected note (confirms)          |
 | `Ctrl-p`        | Fuzzy-find a note by path                |
 | `/`             | Full-text search across note bodies      |
+| `:`             | Command palette (e.g. Sync now)          |
 | `J` / `K`       | Scroll the preview                       |
 | `Ctrl-f` / `-b` | Page-scroll the preview                  |
 | `Tab`           | Zen mode (hide the tree)                 |
@@ -124,6 +125,10 @@ relay every few seconds: edits from another device are pulled, merged
 (conflict-free, per note), and shown live. Because every note is its own CRDT,
 two devices editing different notes never conflict, and concurrent edits to the
 same note merge at the character level.
+
+The status bar shows the sync target, a lock when encrypting, and the **time of
+the last successful sync**. Sync also runs on demand: press `:` for the command
+palette and choose **Sync now**.
 
 ### Pairing devices (encrypted sync)
 
