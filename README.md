@@ -146,6 +146,24 @@ notakase import 'notakase://share/vault#k=…'
 
 Send the link over a trusted channel — it contains your key.
 
+## Embedding a task list
+
+A note can embed a **live task list** from the sibling task app (todokase /
+todarchy) with a fenced `todokase` block:
+
+````markdown
+```todokase
+project: notakase
+status: open
+```
+````
+
+Keys: `project` (name or id), `context` (`@work`), `status` (`open`/`done`/`all`,
+default open), `limit`. The block stores only the *query* — notakase reads the
+task app's `tasks.json` and renders the matching tasks fresh each time you open
+the note. Other markdown viewers just show it as a code block, so notes stay
+portable. Read-only for now (checking tasks off from a note is a future step).
+
 ## Roadmap
 
 - **M1 (done)** — workspace, per-note CRDT store, vault ↔ files, deep nesting
@@ -156,6 +174,10 @@ Send the link over a trusted channel — it contains your key.
   + `$EDITOR` hand-off that re-ingests on return + a confirm-to-delete prompt.
 - **Find (done)** — `Ctrl-p` fuzzy-open by path and `/` full-text search across
   note bodies, in a single overlay picker that jumps to the chosen note.
+- **Command palette (done)** — `:` opens a palette (first command: Sync now);
+  the status bar shows the last-sync time.
+- **Task embeds (done)** — a `todokase` fenced block renders a live, read-only
+  task list from the sibling task app.
 - **M3 (done)** — self-hosted relay sync (`/doc/:id` + ETag polling), a manifest
   CRDT listing note ids for discovery, and `notakase share`/`import` to move the
   vault key between devices.

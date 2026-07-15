@@ -17,6 +17,7 @@ pub mod server_sync;
 pub mod sharelink;
 pub mod store;
 pub mod sync;
+pub mod todokase;
 pub mod util;
 pub mod vaultkey;
 

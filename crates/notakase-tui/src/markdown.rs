@@ -10,7 +10,7 @@
 // lists, task-list checkboxes, blockquotes, links, images, horizontal rules,
 // and GFM tables.
 
-use pulldown_cmark::{Alignment, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -47,6 +47,8 @@ struct Renderer {
     in_item: bool,
     quote: i32,
     in_code_block: bool,
+    // when Some, we're inside a ```todokase block, accumulating its query body
+    embed: Option<String>,
     // table state
     table: Option<Table>,
 }
@@ -77,6 +79,7 @@ impl Renderer {
             in_item: false,
             quote: 0,
             in_code_block: false,
+            embed: None,
             table: None,
         }
     }
@@ -207,9 +210,18 @@ impl Renderer {
             Tag::BlockQuote(_) => {
                 self.quote += 1;
             }
-            Tag::CodeBlock(_) => {
-                self.in_code_block = true;
+            Tag::CodeBlock(kind) => {
+                let lang = match &kind {
+                    CodeBlockKind::Fenced(l) => l.trim().to_string(),
+                    CodeBlockKind::Indented => String::new(),
+                };
                 self.blank();
+                // a ```todokase block is a live task embed, not code
+                if lang.eq_ignore_ascii_case("todokase") {
+                    self.embed = Some(String::new());
+                } else {
+                    self.in_code_block = true;
+                }
             }
             Tag::List(start) => {
                 self.lists.push(start);
@@ -294,7 +306,11 @@ impl Renderer {
                 self.blank();
             }
             TagEnd::CodeBlock => {
-                self.in_code_block = false;
+                if let Some(body) = self.embed.take() {
+                    self.render_embed(&body);
+                } else {
+                    self.in_code_block = false;
+                }
                 self.blank();
             }
             TagEnd::List(_) => {
@@ -343,6 +359,10 @@ impl Renderer {
             tb.cur_cell.push_str(t);
             return;
         }
+        if let Some(buf) = self.embed.as_mut() {
+            buf.push_str(t);
+            return;
+        }
         if self.in_code_block {
             let parts: Vec<&str> = t.split('\n').collect();
             let last = parts.len().saturating_sub(1);
@@ -367,6 +387,62 @@ impl Renderer {
         }
         let style = self.inline_style();
         self.cur.push(Span::styled(t.to_string(), style));
+    }
+
+    /// Render a live todokase task list in place of a ```todokase block.
+    fn render_embed(&mut self, body: &str) {
+        let g = crate::theme::glyphs();
+        let q = notakase_core::todokase::parse_query(body);
+
+        // a dim caption so it reads as a live embed, not note content
+        let scope = q.project.clone().unwrap_or_else(|| "all".to_string());
+        let status = match q.status {
+            notakase_core::todokase::Status::Open => "open",
+            notakase_core::todokase::Status::Done => "done",
+            notakase_core::todokase::Status::All => "all",
+        };
+        self.lines.push(Line::from(Span::styled(
+            format!("{} todokase · {scope} · {status}", g.brand),
+            Style::default().fg(self.accent),
+        )));
+
+        match notakase_core::todokase::query(&q) {
+            Ok(tasks) if tasks.is_empty() => {
+                self.lines.push(Line::from(Span::styled(
+                    "  no matching tasks".to_string(),
+                    Style::default().fg(DIM),
+                )));
+            }
+            Ok(tasks) => {
+                for t in tasks {
+                    let (glyph, col) = if t.done {
+                        (g.task_done, CODE)
+                    } else {
+                        (g.task_open, DIM)
+                    };
+                    let mut spans = vec![Span::styled(format!("  {glyph} "), Style::default().fg(col))];
+                    let title_style = if t.done {
+                        Style::default().fg(DIM).add_modifier(Modifier::CROSSED_OUT)
+                    } else {
+                        Style::default()
+                    };
+                    spans.push(Span::styled(t.title, title_style));
+                    if let Some(c) = t.ctx {
+                        spans.push(Span::styled(format!("   {c}"), Style::default().fg(Color::Cyan)));
+                    }
+                    if let Some(d) = t.due {
+                        spans.push(Span::styled(format!("  due {d}"), Style::default().fg(Color::Yellow)));
+                    }
+                    self.lines.push(Line::from(spans));
+                }
+            }
+            Err(_) => {
+                self.lines.push(Line::from(Span::styled(
+                    "  todokase list unavailable".to_string(),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+        }
     }
 
     fn render_table(&mut self, tb: Table) {
