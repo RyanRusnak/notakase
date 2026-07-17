@@ -301,7 +301,7 @@ fn run(
                 // create (seed + open editor) / rename / delete
                 KeyCode::Char('a') | KeyCode::Char('n') => new_note(terminal, app, backend)?,
                 KeyCode::Char('r') => app.begin_rename(),
-                KeyCode::Char('d') => app.begin_delete(),
+                KeyCode::Char('d') if !ctrl => app.begin_delete(),
 
                 // fuzzy open (Ctrl-p) / full-text search (/) / command palette (:)
                 KeyCode::Char('p') if ctrl => open_picker(app, backend, PickerMode::Files),
@@ -310,10 +310,13 @@ fn run(
                 // complete a task from this note's todokase embed
                 KeyCode::Char('x') => open_task_picker(app),
 
+                // preview scroll: J/K line, Ctrl-d/u half-page, Ctrl-f/b page
                 KeyCode::Char('J') => app.scroll_preview(1),
                 KeyCode::Char('K') => app.scroll_preview(-1),
-                KeyCode::Char('f') if ctrl => app.scroll_preview(10),
-                KeyCode::Char('b') if ctrl => app.scroll_preview(-10),
+                KeyCode::Char('d') if ctrl => app.scroll_preview(10),
+                KeyCode::Char('u') if ctrl => app.scroll_preview(-10),
+                KeyCode::Char('f') if ctrl => app.scroll_preview(18),
+                KeyCode::Char('b') if ctrl => app.scroll_preview(-18),
 
                 KeyCode::Tab => app.toggle_tree(),
                 _ => {}
